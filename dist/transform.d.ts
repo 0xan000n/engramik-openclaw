@@ -21,17 +21,9 @@ export interface ToolCallData {
     success?: boolean;
     duration_ms?: number;
 }
-export interface OpenClawHookEvent {
-    type: string;
-    action: string;
-    sessionKey?: string;
-    timestamp?: Date;
-    messages?: string[];
-    context: Record<string, unknown>;
-}
-export declare function transformMessageReceived(event: OpenClawHookEvent): Interaction | null;
-export declare function transformMessageSent(event: OpenClawHookEvent): Interaction | null;
-export declare function transformLlmOutput(event: OpenClawHookEvent): Interaction | null;
-export declare function transformLlmInput(event: OpenClawHookEvent): Interaction | null;
-export declare function transformToolCall(event: OpenClawHookEvent, phase: 'before' | 'after'): ToolCallData | null;
+export declare function transformMessageReceived(event: unknown): Interaction | null;
+export declare function transformMessageSent(event: unknown): Interaction | null;
+export declare function transformLlmInput(event: unknown): Interaction | null;
+export declare function transformLlmOutput(event: unknown): Interaction | null;
+export declare function transformToolCall(event: unknown, phase: 'before' | 'after'): ToolCallData | null;
 //# sourceMappingURL=transform.d.ts.map

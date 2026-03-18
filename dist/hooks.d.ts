@@ -1,13 +1,12 @@
 import { EngramikClient } from './client.js';
-import { type OpenClawHookEvent } from './transform.js';
 export declare function createHookHandlers(client: EngramikClient): {
-    onMessageReceived(event: OpenClawHookEvent): void;
-    onMessageSent(event: OpenClawHookEvent): void;
-    onMessagePreprocessed(event: OpenClawHookEvent): void;
-    onLlmInput(event: OpenClawHookEvent): void;
-    onLlmOutput(event: OpenClawHookEvent): void;
-    onBeforeToolCall(event: OpenClawHookEvent): void;
-    onAfterToolCall(event: OpenClawHookEvent): void;
-    onAgentEnd(event: OpenClawHookEvent): void;
+    onMessageReceived(event: unknown): void;
+    onMessageSent(event: unknown): void;
+    onMessagePreprocessed(event: unknown): void;
+    onLlmInput(event: unknown): void;
+    onLlmOutput(event: unknown): void;
+    onBeforeToolCall(event: unknown): void;
+    onAfterToolCall(event: unknown): void;
+    onAgentEnd(event: unknown): void;
 };
 //# sourceMappingURL=hooks.d.ts.map

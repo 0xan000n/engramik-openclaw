@@ -2,112 +2,135 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.transformMessageReceived = transformMessageReceived;
 exports.transformMessageSent = transformMessageSent;
-exports.transformLlmOutput = transformLlmOutput;
 exports.transformLlmInput = transformLlmInput;
+exports.transformLlmOutput = transformLlmOutput;
 exports.transformToolCall = transformToolCall;
+// Helper: read a property from a flat event — OpenClaw events are NOT wrapped in context
+function get(event, ...keys) {
+    for (const key of keys) {
+        // Check top-level first (OpenClaw 2026.3.x sends flat events)
+        if (event[key] !== undefined)
+            return event[key];
+        // Then check context wrapper (future versions might wrap)
+        const ctx = event.context;
+        if (ctx && ctx[key] !== undefined)
+            return ctx[key];
+    }
+    return undefined;
+}
+function str(event, ...keys) {
+    const v = get(event, ...keys);
+    return v != null ? String(v) : '';
+}
+function num(event, ...keys) {
+    const v = get(event, ...keys);
+    return Number(v) || 0;
+}
+function sessionKey(event) {
+    return str(event, 'sessionKey', 'sessionId', 'conversationId', 'runId') || 'unknown';
+}
+function timestamp(event) {
+    const ts = get(event, 'timestamp');
+    if (ts instanceof Date)
+        return ts.getTime();
+    if (typeof ts === 'number')
+        return ts;
+    return Date.now();
+}
 function transformMessageReceived(event) {
-    const ctx = event.context;
-    const content = String(ctx.content ?? ctx.bodyForAgent ?? ctx.transcript ?? '');
+    const e = event;
+    const content = str(e, 'content', 'bodyForAgent', 'transcript', 'body', 'text');
     if (!content)
         return null;
     return {
         agent_source: 'openclaw',
-        session_key: event.sessionKey ?? String(ctx.sessionId ?? ctx.conversationId ?? 'unknown'),
-        timestamp: event.timestamp?.getTime() ?? Date.now(),
+        session_key: sessionKey(e),
+        timestamp: timestamp(e),
         role: 'user',
         content,
-        channel: String(ctx.channelId ?? ctx.channel ?? ''),
+        channel: str(e, 'channelId', 'channel'),
         metadata: {
-            from: ctx.from,
-            messageId: ctx.messageId,
-            isGroup: ctx.isGroup,
+            from: get(e, 'from'),
+            messageId: get(e, 'messageId'),
         },
     };
 }
 function transformMessageSent(event) {
-    const ctx = event.context;
-    const content = String(ctx.content ?? ctx.body ?? '');
+    const e = event;
+    const content = str(e, 'content', 'body', 'text', 'response');
     if (!content)
         return null;
+    const usage = (get(e, 'usage') ?? {});
     return {
         agent_source: 'openclaw',
-        session_key: event.sessionKey ?? String(ctx.sessionId ?? ctx.conversationId ?? 'unknown'),
-        timestamp: event.timestamp?.getTime() ?? Date.now(),
+        session_key: sessionKey(e),
+        timestamp: timestamp(e),
         role: 'assistant',
         content,
-        channel: String(ctx.channelId ?? ctx.channel ?? ''),
-        model: String(ctx.model ?? ''),
-        provider: String(ctx.provider ?? ''),
-        tokens_in: Number(ctx.inputTokens ?? ctx.tokensIn ?? 0) || undefined,
-        tokens_out: Number(ctx.outputTokens ?? ctx.tokensOut ?? 0) || undefined,
-        cost_usd: Number(ctx.costUsd ?? ctx.cost ?? 0) || undefined,
-        duration_ms: Number(ctx.durationMs ?? ctx.duration ?? 0) || undefined,
+        channel: str(e, 'channelId', 'channel'),
+        model: str(e, 'model'),
+        provider: str(e, 'provider'),
+        tokens_in: num(e, 'inputTokens', 'tokensIn') || Number(usage.inputTokens ?? usage.input_tokens ?? 0) || undefined,
+        tokens_out: num(e, 'outputTokens', 'tokensOut') || Number(usage.outputTokens ?? usage.output_tokens ?? 0) || undefined,
+        cost_usd: num(e, 'costUsd', 'cost') || Number(usage.costUsd ?? 0) || undefined,
+        duration_ms: num(e, 'durationMs', 'duration', 'latency') || undefined,
         metadata: {
-            to: ctx.to,
-            messageId: ctx.messageId,
-            success: ctx.success,
+            to: get(e, 'to'),
+            messageId: get(e, 'messageId'),
+            success: get(e, 'success'),
         },
     };
 }
-function transformLlmOutput(event) {
-    const ctx = event.context;
-    // LLM output events from Opik-style hooks
-    const content = String(ctx.response ?? ctx.completion ?? ctx.output ?? ctx.content ?? '');
-    if (!content)
-        return null;
-    const usage = ctx.usage;
-    return {
-        agent_source: 'openclaw',
-        session_key: event.sessionKey ?? String(ctx.sessionId ?? ctx.conversationId ?? 'unknown'),
-        timestamp: event.timestamp?.getTime() ?? Date.now(),
-        role: 'assistant',
-        content,
-        channel: String(ctx.channelId ?? ctx.channel ?? ''),
-        model: String(ctx.model ?? ''),
-        provider: String(ctx.provider ?? ''),
-        tokens_in: Number(usage?.inputTokens ?? usage?.input_tokens ?? ctx.inputTokens ?? 0) || undefined,
-        tokens_out: Number(usage?.outputTokens ?? usage?.output_tokens ?? ctx.outputTokens ?? 0) || undefined,
-        cost_usd: Number(usage?.costUsd ?? ctx.costUsd ?? 0) || undefined,
-        duration_ms: Number(ctx.durationMs ?? ctx.latency ?? 0) || undefined,
-    };
-}
 function transformLlmInput(event) {
-    const ctx = event.context;
-    const content = String(ctx.prompt ?? ctx.input ?? ctx.content ?? ctx.bodyForAgent ?? '');
+    const e = event;
+    const content = str(e, 'prompt', 'input', 'content', 'bodyForAgent', 'messages', 'text');
     if (!content)
         return null;
     return {
         agent_source: 'openclaw',
-        session_key: event.sessionKey ?? String(ctx.sessionId ?? ctx.conversationId ?? 'unknown'),
-        timestamp: event.timestamp?.getTime() ?? Date.now(),
+        session_key: sessionKey(e),
+        timestamp: timestamp(e),
         role: 'user',
         content,
-        channel: String(ctx.channelId ?? ctx.channel ?? ''),
-        model: String(ctx.model ?? ''),
+        channel: str(e, 'channelId', 'channel'),
+        model: str(e, 'model'),
+    };
+}
+function transformLlmOutput(event) {
+    const e = event;
+    const content = str(e, 'response', 'completion', 'output', 'content', 'text');
+    if (!content)
+        return null;
+    const usage = (get(e, 'usage') ?? {});
+    return {
+        agent_source: 'openclaw',
+        session_key: sessionKey(e),
+        timestamp: timestamp(e),
+        role: 'assistant',
+        content,
+        channel: str(e, 'channelId', 'channel'),
+        model: str(e, 'model'),
+        provider: str(e, 'provider'),
+        tokens_in: num(e, 'inputTokens', 'tokensIn') || Number(usage.inputTokens ?? usage.input_tokens ?? 0) || undefined,
+        tokens_out: num(e, 'outputTokens', 'tokensOut') || Number(usage.outputTokens ?? usage.output_tokens ?? 0) || undefined,
+        cost_usd: num(e, 'costUsd', 'cost') || Number(usage.costUsd ?? 0) || undefined,
+        duration_ms: num(e, 'durationMs', 'latency', 'duration') || undefined,
     };
 }
 function transformToolCall(event, phase) {
-    // OpenClaw passes tool info in various shapes depending on version
-    // Try the event directly, then context, then nested objects
-    const evt = event;
-    const ctx = (event.context ?? {});
-    const name = String(evt.toolName ?? evt.name ?? evt.tool ??
-        ctx.toolName ?? ctx.name ?? ctx.tool ??
-        ctx.toolCall?.name ??
-        '');
+    // OpenClaw sends flat: {toolName, params, runId, toolCallId}
+    const e = event;
+    const name = str(e, 'toolName', 'name', 'tool');
     if (!name)
         return null;
-    const args = (evt.arguments ?? evt.input ?? evt.args ??
-        ctx.arguments ?? ctx.input ?? ctx.args ??
-        ctx.toolCall?.arguments);
-    const result = String(evt.result ?? evt.output ??
-        ctx.result ?? ctx.output ?? '');
+    const args = (get(e, 'params', 'arguments', 'input', 'args') ?? undefined);
+    const result = str(e, 'result', 'output', 'response');
     return {
         name,
         arguments: phase === 'before' ? args : undefined,
         result: phase === 'after' && result ? result : undefined,
-        success: phase === 'after' ? Boolean(evt.success ?? ctx.success ?? !(evt.error || ctx.error)) : undefined,
-        duration_ms: Number(evt.durationMs ?? ctx.durationMs ?? evt.duration ?? ctx.duration ?? 0) || undefined,
+        success: phase === 'after' ? !get(e, 'error') : undefined,
+        duration_ms: num(e, 'durationMs', 'duration') || undefined,
     };
 }
 //# sourceMappingURL=transform.js.map

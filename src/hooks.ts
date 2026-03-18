@@ -5,117 +5,136 @@ import {
   transformLlmInput,
   transformLlmOutput,
   transformToolCall,
-  type OpenClawHookEvent,
   type ToolCallData,
 } from './transform.js';
 
-// Pending tool calls keyed by session, merged into the next assistant turn
+// Pending tool calls keyed by runId, merged into the next assistant turn
 const pendingToolCalls = new Map<string, ToolCallData[]>();
 
 export function createHookHandlers(client: EngramikClient) {
   return {
-    onMessageReceived(event: OpenClawHookEvent): void {
-      const interaction = transformMessageReceived(event);
-      if (interaction) {
-        client.send(interaction);
+    onMessageReceived(event: unknown): void {
+      try {
+        const interaction = transformMessageReceived(event);
+        if (interaction) client.send(interaction);
+      } catch (err) {
+        console.error('[engramik] message:received error:', (err as Error).message);
       }
     },
 
-    onMessageSent(event: OpenClawHookEvent): void {
-      const interaction = transformMessageSent(event);
-      if (interaction) {
-        // Attach any pending tool calls to this assistant turn
-        const key = interaction.session_key;
-        const tools = pendingToolCalls.get(key);
-        if (tools && tools.length > 0) {
-          interaction.tool_calls = tools;
-          pendingToolCalls.delete(key);
+    onMessageSent(event: unknown): void {
+      try {
+        const interaction = transformMessageSent(event);
+        if (interaction) {
+          // Attach any pending tool calls
+          const e = event as Record<string, unknown>;
+          const key = String(e.sessionKey ?? e.runId ?? e.sessionId ?? '');
+          const tools = pendingToolCalls.get(key);
+          if (tools && tools.length > 0) {
+            interaction.tool_calls = tools;
+            pendingToolCalls.delete(key);
+          }
+          client.send(interaction);
         }
-        client.send(interaction);
+      } catch (err) {
+        console.error('[engramik] message:sent error:', (err as Error).message);
       }
     },
 
-    onMessagePreprocessed(event: OpenClawHookEvent): void {
-      // Captures the fully enriched message before the agent sees it
-      // Useful for seeing what context was assembled (skills, memory, etc.)
-      const ctx = event.context;
-      const bodyForAgent = String(ctx.bodyForAgent ?? '');
-      if (!bodyForAgent) return;
+    onMessagePreprocessed(event: unknown): void {
+      try {
+        const e = event as Record<string, unknown>;
+        const content = String(e.bodyForAgent ?? e.content ?? e.transcript ?? '');
+        if (!content) return;
 
-      const sessionKey = event.sessionKey ?? String(ctx.sessionId ?? 'unknown');
-
-      client.send({
-        agent_source: 'openclaw',
-        session_key: sessionKey,
-        timestamp: event.timestamp?.getTime() ?? Date.now(),
-        role: 'user',
-        content: bodyForAgent,
-        channel: String(ctx.channelId ?? ''),
-        metadata: {
-          preprocessed: true,
-          skillsLoaded: ctx.skillsLoaded,
-          memoryRecalled: ctx.memoryRecalled,
-        },
-      });
-    },
-
-    onLlmInput(event: OpenClawHookEvent): void {
-      const interaction = transformLlmInput(event);
-      if (interaction) {
-        client.send(interaction);
+        client.send({
+          agent_source: 'openclaw',
+          session_key: String(e.sessionKey ?? e.sessionId ?? e.runId ?? 'unknown'),
+          timestamp: Date.now(),
+          role: 'user',
+          content,
+          channel: String(e.channelId ?? e.channel ?? ''),
+          metadata: { preprocessed: true },
+        });
+      } catch (err) {
+        console.error('[engramik] message:preprocessed error:', (err as Error).message);
       }
     },
 
-    onLlmOutput(event: OpenClawHookEvent): void {
-      const interaction = transformLlmOutput(event);
-      if (interaction) {
-        // Attach any pending tool calls
-        const key = interaction.session_key;
-        const tools = pendingToolCalls.get(key);
-        if (tools && tools.length > 0) {
-          interaction.tool_calls = tools;
-          pendingToolCalls.delete(key);
+    onLlmInput(event: unknown): void {
+      try {
+        const interaction = transformLlmInput(event);
+        if (interaction) client.send(interaction);
+      } catch (err) {
+        console.error('[engramik] llm_input error:', (err as Error).message);
+      }
+    },
+
+    onLlmOutput(event: unknown): void {
+      try {
+        const interaction = transformLlmOutput(event);
+        if (interaction) {
+          const e = event as Record<string, unknown>;
+          const key = String(e.runId ?? e.sessionKey ?? e.sessionId ?? '');
+          const tools = pendingToolCalls.get(key);
+          if (tools && tools.length > 0) {
+            interaction.tool_calls = tools;
+            pendingToolCalls.delete(key);
+          }
+          client.send(interaction);
         }
-        client.send(interaction);
+      } catch (err) {
+        console.error('[engramik] llm_output error:', (err as Error).message);
       }
     },
 
-    onBeforeToolCall(event: OpenClawHookEvent): void {
-      const tool = transformToolCall(event, 'before');
-      if (!tool) return;
+    onBeforeToolCall(event: unknown): void {
+      try {
+        const tool = transformToolCall(event, 'before');
+        if (!tool) return;
 
-      const key = event.sessionKey ?? String(event.context.sessionId ?? 'unknown');
-      if (!pendingToolCalls.has(key)) {
-        pendingToolCalls.set(key, []);
+        const e = event as Record<string, unknown>;
+        const key = String(e.runId ?? e.sessionKey ?? e.sessionId ?? 'unknown');
+        if (!pendingToolCalls.has(key)) pendingToolCalls.set(key, []);
+        pendingToolCalls.get(key)!.push(tool);
+      } catch (err) {
+        console.error('[engramik] before_tool_call error:', (err as Error).message);
       }
-      pendingToolCalls.get(key)!.push(tool);
     },
 
-    onAfterToolCall(event: OpenClawHookEvent): void {
-      const tool = transformToolCall(event, 'after');
-      if (!tool) return;
+    onAfterToolCall(event: unknown): void {
+      try {
+        const tool = transformToolCall(event, 'after');
+        if (!tool) return;
 
-      const key = event.sessionKey ?? String(event.context.sessionId ?? 'unknown');
-      const pending = pendingToolCalls.get(key);
-      if (pending) {
-        // Find the matching before-call and merge result info
-        const match = pending.find((t) => t.name === tool.name && !t.result);
-        if (match) {
-          match.result = tool.result;
-          match.success = tool.success;
-          match.duration_ms = tool.duration_ms;
+        const e = event as Record<string, unknown>;
+        const key = String(e.runId ?? e.sessionKey ?? e.sessionId ?? 'unknown');
+        const pending = pendingToolCalls.get(key);
+        if (pending) {
+          const match = pending.find((t) => t.name === tool.name && !t.result);
+          if (match) {
+            match.result = tool.result;
+            match.success = tool.success;
+            match.duration_ms = tool.duration_ms;
+          } else {
+            pending.push(tool);
+          }
         } else {
-          pending.push(tool);
+          pendingToolCalls.set(key, [tool]);
         }
-      } else {
-        pendingToolCalls.set(key, [tool]);
+      } catch (err) {
+        console.error('[engramik] after_tool_call error:', (err as Error).message);
       }
     },
 
-    onAgentEnd(event: OpenClawHookEvent): void {
-      // Clean up any remaining pending tool calls for this session
-      const key = event.sessionKey ?? String(event.context.sessionId ?? 'unknown');
-      pendingToolCalls.delete(key);
+    onAgentEnd(event: unknown): void {
+      try {
+        const e = event as Record<string, unknown>;
+        const key = String(e.runId ?? e.sessionKey ?? e.sessionId ?? '');
+        pendingToolCalls.delete(key);
+      } catch {
+        // ignore
+      }
     },
   };
 }

@@ -10,8 +10,10 @@ exports.default = {
             (typeof api.getConfig === 'function' ? api.getConfig() : null) ??
             api.config ??
             {};
-        const endpoint = String(config.endpoint ??
-            process.env.ENGRAMIK_ENDPOINT ??
+        // ENGRAMIK_ENDPOINT env var is the most reliable way to configure
+        // since api.getConfig() doesn't work in all OpenClaw versions
+        const endpoint = String(process.env.ENGRAMIK_ENDPOINT ??
+            config.endpoint ??
             'http://localhost:4820');
         const batchIntervalMs = Number(config.batchIntervalMs ?? 2000);
         console.log(`[engramik] Initializing — collector at ${endpoint}`);
