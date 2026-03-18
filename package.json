@@ -1,0 +1,19 @@
+{
+  "name": "engramik-openclaw",
+  "version": "1.0.0",
+  "description": "Engramik observability plugin for OpenClaw",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  },
+  "files": [
+    "dist",
+    "openclaw.plugin.json"
+  ]
+}

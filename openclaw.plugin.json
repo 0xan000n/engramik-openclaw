@@ -1,0 +1,29 @@
+{
+  "id": "engramik",
+  "name": "Engramik",
+  "description": "Track your AI usage — sessions, costs, content, and work patterns",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "endpoint": {
+        "type": "string",
+        "default": "http://localhost:4820"
+      },
+      "batchIntervalMs": {
+        "type": "number",
+        "default": 2000
+      },
+      "captureToolArgs": {
+        "type": "boolean",
+        "default": true
+      }
+    }
+  },
+  "uiHints": {
+    "endpoint": {
+      "label": "Engramik Collector URL",
+      "placeholder": "http://localhost:4820"
+    }
+  }
+}
