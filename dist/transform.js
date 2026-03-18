@@ -87,16 +87,27 @@ function transformLlmInput(event) {
     };
 }
 function transformToolCall(event, phase) {
-    const ctx = event.context;
-    const name = String(ctx.toolName ?? ctx.name ?? ctx.tool ?? '');
+    // OpenClaw passes tool info in various shapes depending on version
+    // Try the event directly, then context, then nested objects
+    const evt = event;
+    const ctx = (event.context ?? {});
+    const name = String(evt.toolName ?? evt.name ?? evt.tool ??
+        ctx.toolName ?? ctx.name ?? ctx.tool ??
+        ctx.toolCall?.name ??
+        '');
     if (!name)
         return null;
+    const args = (evt.arguments ?? evt.input ?? evt.args ??
+        ctx.arguments ?? ctx.input ?? ctx.args ??
+        ctx.toolCall?.arguments);
+    const result = String(evt.result ?? evt.output ??
+        ctx.result ?? ctx.output ?? '');
     return {
         name,
-        arguments: phase === 'before' ? (ctx.arguments ?? ctx.input) : undefined,
-        result: phase === 'after' ? String(ctx.result ?? ctx.output ?? '') : undefined,
-        success: phase === 'after' ? Boolean(ctx.success ?? !ctx.error) : undefined,
-        duration_ms: Number(ctx.durationMs ?? 0) || undefined,
+        arguments: phase === 'before' ? args : undefined,
+        result: phase === 'after' && result ? result : undefined,
+        success: phase === 'after' ? Boolean(evt.success ?? ctx.success ?? !(evt.error || ctx.error)) : undefined,
+        duration_ms: Number(evt.durationMs ?? ctx.durationMs ?? evt.duration ?? ctx.duration ?? 0) || undefined,
     };
 }
 //# sourceMappingURL=transform.js.map
